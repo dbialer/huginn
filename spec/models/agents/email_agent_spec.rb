@@ -40,6 +40,19 @@ describe Agents::EmailAgent do
       expect(get_message_part(ActionMailer::Base.deliveries.first, /plain/).strip).to eq("hi!\n  data: Something you should know about")
     end
 
+    it "logs any mailer errors" do
+      event1 = Event.new
+      event1.agent = agents(:bob_rain_notifier_agent)
+      event1.payload = { :message => "hi!", :data => "Something you should know about" }
+      event1.save!
+
+      mock(SystemMailer).send_message(anything) { raise Net::SMTPAuthenticationError.new("Wrong password") }
+
+      Agents::EmailAgent.async_receive(@checker.id, [event1.id])
+
+      expect(@checker.logs.last.message).to match(/Error sending mail .* Wrong password/)
+    end
+
     it "can receive complex events and send them on" do
       stub_request(:any, /wunderground/).to_return(:body => File.read(Rails.root.join("spec/data_fixtures/weather.json")), :status => 200)
       stub.any_instance_of(Agents::WeatherAgent).is_tomorrow?(anything) { true }
